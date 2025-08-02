@@ -1,0 +1,83 @@
+{
+  "name": "silverhand-mod-loader",
+  "version": "1.0.0",
+  "description": "A mod loader for Cyberpunk 2077 with virtual filesystem overlay",
+  "main": "public/electron.js",
+  "homepage": "./",
+  "private": true,
+  "dependencies": {
+    "@testing-library/jest-dom": "^5.16.4",
+    "@testing-library/react": "^13.3.0",
+    "@testing-library/user-event": "^13.5.0",
+    "chokidar": "^3.5.3",
+    "electron-is-dev": "^2.0.0",
+    "fs-extra": "^11.1.1",
+    "ini": "^4.1.1",
+    "lucide-react": "^0.263.1",
+    "react": "^18.2.0",
+    "react-beautiful-dnd": "^13.1.1",
+    "react-dom": "^18.2.0",
+    "react-dropzone": "^14.2.3",
+    "react-scripts": "5.0.1",
+    "react-window": "^1.8.11",
+    "yauzl": "^2.10.0"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.14",
+    "concurrently": "^7.6.0",
+    "electron": "^25.3.0",
+    "electron-builder": "^24.13.3",
+    "electron-packager": "^17.1.2",
+    "postcss": "^8.4.27",
+    "tailwindcss": "^3.3.3",
+    "wait-on": "^7.0.1"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "electron": "electron .",
+    "electron-dev": "concurrently \"npm start\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron-pack": "npm run build && electron-packager . silverhand-mod-loader --platform=win32 --arch=x64 --out=dist --overwrite --ignore=\"src|public/index.html|tailwind.config.js|postcss.config.js|README.md|.git|.gitignore|dist|mods|merged_runtime|virtual_game|modloader-app|config\"",
+    "preelectron-pack": "npm run build"
+  },
+  "build": {
+    "appId": "com.silverhand.modloader",
+    "productName": "Silverhand Mod Loader",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "build/**/*",
+      "public/electron.js",
+      "public/preload.js",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "extraMetadata": {
+      "main": "public/electron.js"
+    }
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

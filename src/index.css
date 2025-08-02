@@ -1,0 +1,140 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar for virtualized lists */
+.cyber-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.cyber-scrollbar::-webkit-scrollbar-track {
+  background: rgba(16, 20, 31, 0.5);
+  border-radius: 4px;
+}
+
+.cyber-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 230, 255, 0.3);
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.cyber-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 230, 255, 0.5);
+}
+
+/* Main content scrollbar styling */
+main::-webkit-scrollbar {
+  width: 12px;
+}
+
+main::-webkit-scrollbar-track {
+  background: rgba(16, 20, 31, 0.8);
+  border-radius: 6px;
+}
+
+main::-webkit-scrollbar-thumb {
+  background: rgba(0, 230, 255, 0.4);
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+main::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 230, 255, 0.6);
+}
+
+/* Ensure sidebar never scrolls */
+nav {
+  overflow: hidden !important;
+}
+
+/* Performance optimizations for large lists */
+.virtualized-item {
+  will-change: transform;
+  contain: layout style paint;
+}
+
+/* Smooth drag animations */
+.dragging {
+  z-index: 1000;
+  transform: rotate(2deg);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Fira+Code:wght@300;400;500&display=swap');
+
+@layer base {
+  body {
+    @apply bg-cyber-darker text-gray-100 font-mono;
+    background-image: 
+      radial-gradient(circle at 25% 25%, #00d9ff15 0%, transparent 50%),
+      radial-gradient(circle at 75% 75%, #ff006e15 0%, transparent 50%);
+  }
+  
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-cyber-dark;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-cyber-blue bg-opacity-50 rounded;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-cyber-blue bg-opacity-75;
+  }
+}
+
+@layer components {
+  .cyber-border {
+    @apply border border-cyber-blue bg-cyber-dark bg-opacity-50;
+    box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+  }
+  
+  .cyber-button {
+    @apply px-4 py-2 bg-cyber-blue bg-opacity-20 border border-cyber-blue text-cyber-blue font-semibold;
+    @apply hover:bg-opacity-30 transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-cyber-blue focus:ring-opacity-50;
+    box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+  }
+  
+  .cyber-button:hover {
+    box-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
+  }
+  
+  .cyber-button-primary {
+    @apply cyber-button bg-cyber-blue text-cyber-dark;
+  }
+  
+  .cyber-button-danger {
+    @apply cyber-button border-cyber-pink text-cyber-pink bg-cyber-pink bg-opacity-20;
+  }
+  
+  .cyber-input {
+    @apply bg-cyber-dark bg-opacity-50 border border-cyber-blue text-gray-100 px-3 py-2;
+    @apply focus:outline-none focus:ring-2 focus:ring-cyber-blue focus:ring-opacity-50;
+    @apply placeholder-gray-400;
+  }
+  
+  .mod-card {
+    @apply cyber-border p-4 rounded-lg backdrop-blur-sm;
+    background: linear-gradient(135deg, rgba(0, 217, 255, 0.05) 0%, rgba(255, 0, 110, 0.05) 100%);
+  }
+  
+  .drag-handle {
+    @apply text-gray-400 hover:text-cyber-blue cursor-grab active:cursor-grabbing;
+    transition: all 0.2s ease;
+  }
+  
+  .drop-zone {
+    @apply border-2 border-dashed border-cyber-blue border-opacity-50 bg-cyber-blue bg-opacity-5;
+    @apply hover:border-opacity-75 hover:bg-opacity-10 transition-all duration-300;
+  }
+  
+  .drop-zone.active {
+    @apply border-opacity-100 bg-opacity-20;
+    box-shadow: 0 0 30px rgba(0, 217, 255, 0.4);
+  }
+}
