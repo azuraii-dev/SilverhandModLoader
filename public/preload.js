@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -17,7 +17,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Game management
   selectGameDirectory: () => ipcRenderer.invoke('select-game-directory'),
+  selectModFiles: () => ipcRenderer.invoke('select-mod-files'),
   launchGame: (gameInstallPath, enabledMods) => ipcRenderer.invoke('launch-game', gameInstallPath, enabledMods),
+  getGameStatus: () => ipcRenderer.invoke('get-game-status'),
+  
+  // File operations with security validation
+  importModFile: (filePath) => ipcRenderer.invoke('import-mod-secure', filePath),
+  
+  // Modern Electron file path resolution
+  getPathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch (error) {
+      console.error('Error getting file path:', error);
+      return null;
+    }
+  },
+  
+  // Import mod from file buffer (for drag & drop)
+  importModFromBuffer: (fileName, arrayBuffer) => ipcRenderer.invoke('import-mod-from-buffer', fileName, arrayBuffer),
   
   // File operations
   openPath: (path) => ipcRenderer.invoke('open-path', path),

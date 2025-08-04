@@ -3,8 +3,10 @@ public/index.html
 tailwind.config.js
 postcss.config.js
 README.md
+RELEASE_0.0.1.md
 .git/
 .gitignore
+.packagerignore
 dist/
 mods/
 merged_runtime/
@@ -16,3 +18,12 @@ config/
 Thumbs.db
 .vscode/
 .idea/
+node_modules/@testing-library/
+node_modules/chokidar/
+node_modules/react-scripts/
+node_modules/autoprefixer/
+node_modules/postcss/
+node_modules/tailwindcss/
+node_modules/concurrently/
+node_modules/wait-on/
+node_modules/electron-builder/

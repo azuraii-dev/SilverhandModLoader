@@ -1,21 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import VirtualizedModList from './VirtualizedModList';
 import ModEditModal from './ModEditModal';
 
-const ModList = ({ mods, config, onToggleMod, onDeleteMod, enabledMods }) => {
+const ModList = ({ mods, config, onToggleMod, onBulkToggleMods, onDeleteMod, enabledMods, onUpdateModLoadOrder }) => {
   const [modsWithMetadata, setModsWithMetadata] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingMod, setEditingMod] = useState(null);
   const [availableCategories, setAvailableCategories] = useState(['Other']);
   const [availableTags, setAvailableTags] = useState([]);
 
-  // Load mods with metadata
-  useEffect(() => {
-    loadModsWithMetadata();
-    loadCategoriesAndTags();
-  }, [mods]);
-
-  const loadModsWithMetadata = async () => {
+  const loadModsWithMetadata = useCallback(async () => {
     try {
       setLoading(true);
       const modsData = await window.electronAPI.getModsWithMetadata();
@@ -27,9 +21,9 @@ const ModList = ({ mods, config, onToggleMod, onDeleteMod, enabledMods }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [mods]);
 
-  const loadCategoriesAndTags = async () => {
+  const loadCategoriesAndTags = useCallback(async () => {
     try {
       const { categories, tags } = await window.electronAPI.getModCategoriesAndTags();
       setAvailableCategories(categories);
@@ -37,9 +31,9 @@ const ModList = ({ mods, config, onToggleMod, onDeleteMod, enabledMods }) => {
     } catch (error) {
       console.error('Error loading categories and tags:', error);
     }
-  };
+  }, []);
 
-  const handleEditMod = async (modId, updates) => {
+  const handleEditMod = useCallback(async (modId, updates) => {
     try {
       await window.electronAPI.updateModMetadata(modId, updates);
       await loadModsWithMetadata(); // Reload to get updated data
@@ -47,11 +41,33 @@ const ModList = ({ mods, config, onToggleMod, onDeleteMod, enabledMods }) => {
       console.error('Error updating mod metadata:', error);
       throw error;
     }
-  };
+  }, [loadModsWithMetadata]);
 
-  const handleViewModFiles = (modId) => {
+  // Load mods with metadata - placed after function definitions
+  useEffect(() => {
+    loadModsWithMetadata();
+    loadCategoriesAndTags();
+  }, [loadModsWithMetadata, loadCategoriesAndTags]);
+
+  const handleViewModFiles = useCallback((modId) => {
+    console.log('[DEBUG] handleViewModFiles called for:', modId);
     window.electronAPI.openModFolder(modId);
-  };
+  }, []);
+
+  const handleEditModModal = useCallback((modId) => {
+    console.log('[DEBUG] onEditMod called for:', modId);
+    const mod = modsWithMetadata.find(m => m.id === modId);
+    setEditingMod(mod);
+  }, [modsWithMetadata]);
+
+  // Memoize prop functions to prevent unnecessary re-renders
+  const memoizedOnToggleMod = useCallback((modId) => {
+    onToggleMod(modId);
+  }, [onToggleMod]);
+
+  const memoizedOnDeleteMod = useCallback((modId) => {
+    onDeleteMod(modId);
+  }, [onDeleteMod]);
 
   if (loading) {
     return (
@@ -76,13 +92,13 @@ const ModList = ({ mods, config, onToggleMod, onDeleteMod, enabledMods }) => {
       <VirtualizedModList
         mods={modsWithMetadata}
         enabledMods={enabledMods}
-        onToggleMod={onToggleMod}
-        onEditMod={(modId) => {
-          const mod = modsWithMetadata.find(m => m.id === modId);
-          setEditingMod(mod);
-        }}
+        modLoadOrder={config.modLoadOrder}
+        onToggleMod={memoizedOnToggleMod}
+        onBulkToggleMods={onBulkToggleMods}
+        onEditMod={handleEditModModal}
         onViewModFiles={handleViewModFiles}
-        onDeleteMod={onDeleteMod}
+        onDeleteMod={memoizedOnDeleteMod}
+        onUpdateModLoadOrder={onUpdateModLoadOrder}
       />
 
       <ModEditModal

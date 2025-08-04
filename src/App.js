@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { DragDropContext } from 'react-beautiful-dnd';
 import Header from './components/Header';
 import ModList from './components/ModList';
 import ModImporter from './components/ModImporter';
 import Settings from './components/Settings';
-import GameLauncher from './components/GameLauncher';
+
 import ConflictDetector from './components/ConflictDetector';
 import ErrorBoundary from './components/ErrorBoundary';
-import { Settings as SettingsIcon, List, Upload, Play } from 'lucide-react';
+import { Settings as SettingsIcon, List, Upload } from 'lucide-react';
 
 function App() {
   const [currentView, setCurrentView] = useState('mods');
@@ -118,41 +117,55 @@ function App() {
     detectConflicts(mods, newEnabledMods);
   };
 
-  const reorderMods = async (result) => {
-    // Basic validation
-    if (!result || !result.destination) return;
-    if (result.destination.index === result.source.index) return;
+  const bulkToggleMods = async (modIds, shouldEnable) => {
+    let newEnabledMods = [...config.enabledMods];
+    let newLoadOrder = [...config.modLoadOrder];
+    
+    modIds.forEach(modId => {
+      const isCurrentlyEnabled = newEnabledMods.includes(modId);
+      
+      if (shouldEnable && !isCurrentlyEnabled) {
+        // Add mod
+        newEnabledMods.push(modId);
+        newLoadOrder.push(modId);
+      } else if (!shouldEnable && isCurrentlyEnabled) {
+        // Remove mod
+        newEnabledMods = newEnabledMods.filter(id => id !== modId);
+        newLoadOrder = newLoadOrder.filter(id => id !== modId);
+      }
+    });
 
-    // Only reorder if we have enabled mods
-    if (!config.enabledMods || config.enabledMods.length === 0) return;
+    const newConfig = {
+      ...config,
+      enabledMods: newEnabledMods,
+      modLoadOrder: newLoadOrder
+    };
 
-    // Ensure we're reordering within the correct droppable
-    if (result.source.droppableId !== 'enabled-mods' || result.destination.droppableId !== 'enabled-mods') {
-      return;
-    }
+    await saveConfig(newConfig);
+    detectConflicts(mods, newEnabledMods);
+  };
 
+  const updateModLoadOrder = async (newLoadOrder) => {
     try {
-      const newOrder = Array.from(config.modLoadOrder);
-      const [reorderedItem] = newOrder.splice(result.source.index, 1);
-      newOrder.splice(result.destination.index, 0, reorderedItem);
-
       const newConfig = {
         ...config,
-        modLoadOrder: newOrder
+        modLoadOrder: newLoadOrder
       };
 
       await saveConfig(newConfig);
     } catch (error) {
-      console.error('Error reordering mods:', error);
+      console.error('Error updating mod load order:', error);
     }
   };
 
   const importMod = async (filePath) => {
     try {
+      console.log('[APP DEBUG] importMod called with filePath:', filePath);
+      console.log('[APP DEBUG] typeof filePath:', typeof filePath);
       await window.electronAPI.importMod(filePath);
       await refreshMods();
     } catch (error) {
-      console.error('Error importing mod:', error);
+      console.error('[APP DEBUG] Error importing mod:', error);
       throw error;
     }
   };
@@ -212,94 +225,85 @@ function App() {
   }
 
   return (
-    <DragDropContext onDragEnd={reorderMods}>
-      <div className="h-screen bg-cyber-darker flex flex-col">
-        <Header 
-          config={config}
-          conflicts={conflicts}
-          onLaunchGame={launchGame}
-        />
-        
-        <div className="flex flex-1 h-full overflow-hidden">
-          {/* Static Sidebar Navigation - Fixed Height, No Scroll */}
-          <nav className="w-64 bg-cyber-dark bg-opacity-50 border-r border-cyber-blue border-opacity-30 flex-shrink-0 h-full overflow-hidden">
-            <div className="p-4 h-full">
-              <div className="space-y-2">
-                {navigationItems.map(item => {
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => setCurrentView(item.id)}
-                      className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
-                        currentView === item.id
-                          ? 'bg-cyber-blue bg-opacity-20 text-cyber-blue border border-cyber-blue'
-                          : 'text-gray-300 hover:text-cyber-blue hover:bg-cyber-blue hover:bg-opacity-10'
-                      }`}
-                    >
-                      <Icon size={20} />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              
-              {/* Game Launcher in Sidebar */}
-              <div className="mt-8 pt-4 border-t border-cyber-blue border-opacity-30">
-                <GameLauncher 
-                  config={config}
-                  enabledModsCount={config.enabledMods.length}
-                  onLaunchGame={launchGame}
-                />
+    <div className="h-screen bg-cyber-darker flex flex-col">
+      <Header 
+        config={config}
+        conflicts={conflicts}
+        onLaunchGame={launchGame}
+      />
+      
+      <div className="flex flex-1 h-full overflow-hidden">
+        {/* Static Sidebar Navigation - Fixed Height, No Scroll */}
+        <nav className="w-64 bg-cyber-dark bg-opacity-50 border-r border-cyber-blue border-opacity-30 flex-shrink-0 h-full overflow-hidden">
+          <div className="p-4 h-full">
+            <div className="space-y-2">
+              {navigationItems.map(item => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setCurrentView(item.id)}
+                    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                      currentView === item.id
+                        ? 'bg-cyber-blue bg-opacity-20 text-cyber-blue border border-cyber-blue'
+                        : 'text-gray-300 hover:text-cyber-blue hover:bg-cyber-blue hover:bg-opacity-10'
+                    }`}
+                  >
+                    <Icon size={20} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </nav>
+
+        {/* Main Content - Conditional layout based on current view */}
+        <main className="flex-1 h-full bg-cyber-darker">
+          {currentView === 'mods' ? (
+            /* Mod Library - Special layout with constrained height */
+            <div className="p-6 h-full flex flex-col">
+              {conflicts.length > 0 && (
+                <ConflictDetector conflicts={conflicts} className="mb-6" />
+              )}
+              <div className="flex-1 min-h-0">
+                <ErrorBoundary>
+                  <ModList
+                    mods={mods}
+                    config={config}
+                    onToggleMod={toggleMod}
+                    onBulkToggleMods={bulkToggleMods}
+                    onDeleteMod={deleteMod}
+                    enabledMods={config.enabledMods}
+                    onUpdateModLoadOrder={updateModLoadOrder}
+                  />
+                </ErrorBoundary>
               </div>
             </div>
-          </nav>
-
-          {/* Main Content - Conditional layout based on current view */}
-          <main className="flex-1 h-full bg-cyber-darker">
-            {currentView === 'mods' ? (
-              /* Mod Library - Special layout with constrained height */
-              <div className="p-6 h-full flex flex-col">
+          ) : (
+            /* All other pages - Normal scrollable layout */
+            <div className="h-full overflow-y-auto">
+              <div className="p-6 min-h-full">
                 {conflicts.length > 0 && (
                   <ConflictDetector conflicts={conflicts} className="mb-6" />
                 )}
-                <div className="flex-1 min-h-0">
-                  <ErrorBoundary>
-                    <ModList
-                      mods={mods}
-                      config={config}
-                      onToggleMod={toggleMod}
-                      onDeleteMod={deleteMod}
-                      enabledMods={config.enabledMods}
-                    />
-                  </ErrorBoundary>
-                </div>
-              </div>
-            ) : (
-              /* All other pages - Normal scrollable layout */
-              <div className="h-full overflow-y-auto">
-                <div className="p-6 min-h-full">
-                  {conflicts.length > 0 && (
-                    <ConflictDetector conflicts={conflicts} className="mb-6" />
-                  )}
 
-                  {currentView === 'import' && (
-                    <ModImporter onImportMod={importMod} />
-                  )}
+                {currentView === 'import' && (
+                  <ModImporter onImportMod={importMod} />
+                )}
 
-                  {currentView === 'settings' && (
-                    <Settings
-                      config={config}
-                      onUpdateGamePath={updateGamePath}
-                    />
-                  )}
-                </div>
+                {currentView === 'settings' && (
+                  <Settings
+                    config={config}
+                    onUpdateGamePath={updateGamePath}
+                  />
+                )}
               </div>
-            )}
-          </main>
-        </div>
+            </div>
+          )}
+        </main>
       </div>
-    </DragDropContext>
+    </div>
   );
 }
 

@@ -1,9 +1,20 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
-const isDev = require('electron-is-dev');
+const isDev = process.env.NODE_ENV === 'development' || process.env.ELECTRON_IS_DEV === 'true' || !app.isPackaged;
 const fs = require('fs-extra');
 const yauzl = require('yauzl');
 const { spawn } = require('child_process');
+
+// Helper function to get the correct base path for data storage  
+const getAppDataPath = () => {
+  if (isDev) {
+    // In development, use the project directory
+    return process.cwd();
+  } else {
+    // In packaged app, use the directory containing the executable (ORIGINAL BEHAVIOR)
+    return path.dirname(process.execPath);
+  }
+};
 
 let mainWindow;
 
@@ -16,7 +27,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      enableRemoteModule: false,
+      sandbox: false,
       preload: path.join(__dirname, 'preload.js')
     },
     icon: path.join(__dirname, 'assets/icon.png'), // Add icon later
@@ -62,7 +73,7 @@ app.on('activate', () => {
 // Load configuration
 ipcMain.handle('load-config', async () => {
   try {
-    const configPath = path.join(process.cwd(), 'config', 'load_order.json');
+    const configPath = path.join(getAppDataPath(), 'config', 'load_order.json');
     if (await fs.pathExists(configPath)) {
       return await fs.readJson(configPath);
     }
@@ -88,7 +99,7 @@ ipcMain.handle('load-config', async () => {
 // Save configuration
 ipcMain.handle('save-config', async (event, config) => {
   try {
-    const configPath = path.join(process.cwd(), 'config', 'load_order.json');
+    const configPath = path.join(getAppDataPath(), 'config', 'load_order.json');
     await fs.ensureDir(path.dirname(configPath));
     await fs.writeJson(configPath, config, { spaces: 2 });
     return true;
@@ -101,10 +112,16 @@ ipcMain.handle('save-config', async (event, config) => {
 // Get installed mods
 ipcMain.handle('get-mods', async () => {
   try {
-    const modsPath = path.join(process.cwd(), 'mods');
+    const baseDataPath = getAppDataPath();
+    const modsPath = path.join(baseDataPath, 'mods');
+    
+    console.log('[MODS DEBUG] Getting mods from:', modsPath);
+    console.log('[MODS DEBUG] Base data path:', baseDataPath);
+    
     await fs.ensureDir(modsPath);
     
     const modDirs = await fs.readdir(modsPath);
+    console.log('[MODS DEBUG] Found items in mods folder:', modDirs);
     const mods = [];
     
     for (const modDir of modDirs) {
@@ -166,14 +183,192 @@ ipcMain.handle('select-game-directory', async () => {
   }
 });
 
-// Import mod from zip file
-ipcMain.handle('import-mod', async (event, filePath) => {
+// Select mod files to import
+ipcMain.handle('select-mod-files', async () => {
   try {
-    const modsPath = path.join(process.cwd(), 'mods');
+    console.log('[ELECTRON DEBUG] File picker dialog opening...');
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile', 'multiSelections'],
+      title: 'Select Mod Files to Import',
+      filters: [
+        { name: 'Zip Files', extensions: ['zip'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+    
+    console.log('[ELECTRON DEBUG] Dialog result:', {
+      canceled: result.canceled,
+      filePaths: result.filePaths,
+      filePathsLength: result.filePaths?.length || 0
+    });
+    
+    if (!result.canceled && result.filePaths.length > 0) {
+      console.log('[ELECTRON DEBUG] Returning file paths:', result.filePaths);
+      // Immediately process the files and return results instead of just paths
+      const results = [];
+      for (const filePath of result.filePaths) {
+        try {
+          const fileName = path.basename(filePath, '.zip');
+          const fileExists = await fs.pathExists(filePath);
+          console.log('[ELECTRON DEBUG] Processing file:', filePath, 'exists:', fileExists);
+          
+          if (fileExists) {
+            results.push({
+              path: filePath,
+              name: fileName,
+              size: (await fs.stat(filePath)).size
+            });
+          }
+        } catch (err) {
+          console.error('[ELECTRON DEBUG] Error processing file:', filePath, err);
+        }
+      }
+      return results;
+    }
+    console.log('[ELECTRON DEBUG] No files selected, returning empty array');
+    return [];
+  } catch (error) {
+    console.error('[ELECTRON DEBUG] Error selecting mod files:', error);
+    throw error;
+  }
+});
+
+// Import mod from file buffer (for drag & drop security restrictions)
+ipcMain.handle('import-mod-from-buffer', async (event, fileName, arrayBuffer) => {
+  try {
+    console.log('[ELECTRON DEBUG] Buffer import called for:', fileName, 'Size:', arrayBuffer.byteLength);
+    
+    if (!fileName || !arrayBuffer) {
+      throw new Error('Invalid file data provided');
+    }
+    
+    // Create temporary file from buffer
+    const tempDir = path.join(getAppDataPath(), 'temp');
+    await fs.ensureDir(tempDir);
+    
+    const tempFilePath = path.join(tempDir, fileName);
+    console.log('[ELECTRON DEBUG] Writing temp file to:', tempFilePath);
+    
+    // Write buffer to temporary file
+    await fs.writeFile(tempFilePath, Buffer.from(arrayBuffer));
+    
+    // Process the temporary file
+    const modsPath = path.join(getAppDataPath(), 'mods');
+    await fs.ensureDir(modsPath);
+    
+    const modName = path.basename(fileName, '.zip');
+    const extractPath = path.join(modsPath, modName);
+    
+    // Check if mod already exists
+    if (await fs.pathExists(extractPath)) {
+      await fs.remove(tempFilePath); // Clean up temp file
+      throw new Error(`Mod "${modName}" already exists`);
+    }
+    
+    await fs.ensureDir(extractPath);
+    
+    // Extract zip file
+    await extractZip(tempFilePath, extractPath);
+    
+    // Clean up temporary file
+    await fs.remove(tempFilePath);
+    
+    // Validate mod structure
+    const isValid = await validateModStructure(extractPath);
+    if (!isValid) {
+      await fs.remove(extractPath);
+      throw new Error('Invalid mod structure. Mod must contain archive/, r6/, redscript/, or engine/ folders.');
+    }
+    
+    console.log('[ELECTRON DEBUG] Mod imported successfully from buffer:', modName);
+    return {
+      id: modName,
+      name: modName,
+      path: extractPath
+    };
+  } catch (error) {
+    console.error('[ELECTRON DEBUG] Error in buffer import:', error);
+    throw error;
+  }
+});
+
+// Secure mod import that processes files directly 
+ipcMain.handle('import-mod-secure', async (event, fileInfo) => {
+  try {
+    console.log('[ELECTRON DEBUG] Secure import called with:', fileInfo);
+    
+    if (!fileInfo || !fileInfo.path) {
+      throw new Error('Invalid file information provided');
+    }
+    
+    const filePath = fileInfo.path;
+    console.log('[ELECTRON DEBUG] Processing secure import for:', filePath);
+    
+    // Validate file exists
+    const fileExists = await fs.pathExists(filePath);
+    if (!fileExists) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    
+    const modsPath = path.join(getAppDataPath(), 'mods');
     await fs.ensureDir(modsPath);
     
     const fileName = path.basename(filePath, '.zip');
     const extractPath = path.join(modsPath, fileName);
+    
+    // Check if mod already exists
+    if (await fs.pathExists(extractPath)) {
+      throw new Error(`Mod "${fileName}" already exists`);
+    }
+    
+    await fs.ensureDir(extractPath);
+    
+    // Extract zip file
+    await extractZip(filePath, extractPath);
+    
+    // Validate mod structure
+    const isValid = await validateModStructure(extractPath);
+    if (!isValid) {
+      await fs.remove(extractPath);
+      throw new Error('Invalid mod structure. Mod must contain archive/, r6/, redscript/, or engine/ folders.');
+    }
+    
+    console.log('[ELECTRON DEBUG] Mod imported successfully:', fileName);
+    return {
+      id: fileName,
+      name: fileName,
+      path: extractPath
+    };
+  } catch (error) {
+    console.error('[ELECTRON DEBUG] Error in secure import:', error);
+    throw error;
+  }
+});
+
+// Import mod from zip file
+ipcMain.handle('import-mod', async (event, filePath) => {
+  try {
+    console.log('[ELECTRON DEBUG] import-mod called with filePath:', filePath);
+    console.log('[ELECTRON DEBUG] Current working directory:', process.cwd());
+    console.log('[ELECTRON DEBUG] getAppDataPath():', getAppDataPath());
+    console.log('[ELECTRON DEBUG] isDev:', isDev);
+    console.log('[ELECTRON DEBUG] app.isPackaged:', app.isPackaged);
+    
+    // Check if file actually exists at the given path
+    const fileExists = await fs.pathExists(filePath);
+    console.log('[ELECTRON DEBUG] File exists at given path:', fileExists);
+    
+    if (!fileExists) {
+      throw new Error(`File not found at path: ${filePath}`);
+    }
+    
+    const modsPath = path.join(getAppDataPath(), 'mods');
+    console.log('[ELECTRON DEBUG] Mods directory will be:', modsPath);
+    await fs.ensureDir(modsPath);
+    
+    const fileName = path.basename(filePath, '.zip');
+    const extractPath = path.join(modsPath, fileName);
+    console.log('[ELECTRON DEBUG] Extract path:', extractPath);
     
     // Check if mod already exists
     if (await fs.pathExists(extractPath)) {
@@ -203,6 +398,13 @@ ipcMain.handle('import-mod', async (event, filePath) => {
   }
 });
 
+// Track game process state
+let gameProcessInfo = {
+  isRunning: false,
+  launchedAt: null,
+  processId: null
+};
+
 // Launch game with mods
 ipcMain.handle('launch-game', async (event, gameInstallPath, enabledMods) => {
   try {
@@ -229,6 +431,20 @@ ipcMain.handle('launch-game', async (event, gameInstallPath, enabledMods) => {
       stdio: 'ignore'
     });
     
+    // Track game process
+    gameProcessInfo = {
+      isRunning: true,
+      launchedAt: new Date(),
+      processId: gameProcess.pid
+    };
+    
+    // Monitor when game process exits
+    gameProcess.on('exit', (code) => {
+      console.log(`[LAUNCH] Game process exited with code: ${code}`);
+      gameProcessInfo.isRunning = false;
+      gameProcessInfo.processId = null;
+    });
+    
     gameProcess.unref();
     
     return {
@@ -237,10 +453,13 @@ ipcMain.handle('launch-game', async (event, gameInstallPath, enabledMods) => {
       virtualGamePath: virtualStats.virtualGamePath,
       originalGamePath: gameInstallPath,
       modFilesOverlaid: virtualStats.modFilesOverlaid,
-      symlinksCreated: virtualStats.symlinksCreated
+      symlinksCreated: virtualStats.symlinksCreated,
+      gameProcessInfo: { ...gameProcessInfo }
     };
   } catch (error) {
     console.error('Error launching game:', error);
+    gameProcessInfo.isRunning = false;
+    gameProcessInfo.processId = null;
     throw error;
   }
 });
@@ -248,7 +467,7 @@ ipcMain.handle('launch-game', async (event, gameInstallPath, enabledMods) => {
 // Delete mod
 ipcMain.handle('delete-mod', async (event, modId) => {
   try {
-    const modPath = path.join(process.cwd(), 'mods', modId);
+    const modPath = path.join(getAppDataPath(), 'mods', modId);
     await fs.remove(modPath);
     return true;
   } catch (error) {
@@ -311,8 +530,8 @@ ipcMain.handle('scan-redscript-errors', async () => {
 ipcMain.handle('generate-launch-preview', async (event, enabledMods) => {
   try {
     console.log('[IPC] generate-launch-preview called with mods:', enabledMods);
-    const mergedPath = path.join(process.cwd(), 'merged_runtime');
-    const modsPath = path.join(process.cwd(), 'mods');
+    const mergedPath = path.join(getAppDataPath(), 'merged_runtime');
+    const modsPath = path.join(getAppDataPath(), 'mods');
     
     console.log('[IPC] Merged path:', mergedPath);
     console.log('[IPC] Mods path:', modsPath);
@@ -375,13 +594,12 @@ ipcMain.handle('generate-launch-preview', async (event, enabledMods) => {
 ipcMain.handle('open-merged-runtime-folder', async () => {
   try {
     console.log('[IPC] open-merged-runtime-folder called');
-    const mergedPath = path.join(process.cwd(), 'merged_runtime');
+    const mergedPath = path.join(getAppDataPath(), 'merged_runtime');
     console.log('[IPC] Merged path:', mergedPath);
     
     await fs.ensureDir(mergedPath);
     
     // Open in Windows Explorer
-    const { shell } = require('electron');
     const result = await shell.openPath(mergedPath);
     console.log('[IPC] Shell.openPath result:', result);
     
@@ -400,7 +618,7 @@ ipcMain.handle('open-merged-runtime-folder', async () => {
 ipcMain.handle('open-mod-folder', async (event, modId) => {
   try {
     console.log('[IPC] open-mod-folder called for:', modId);
-    const modPath = path.join(process.cwd(), 'mods', modId);
+    const modPath = path.join(getAppDataPath(), 'mods', modId);
     console.log('[IPC] Mod path:', modPath);
     
     if (!(await fs.pathExists(modPath))) {
@@ -408,7 +626,6 @@ ipcMain.handle('open-mod-folder', async (event, modId) => {
     }
     
     // Open in Windows Explorer
-    const { shell } = require('electron');
     const result = await shell.openPath(modPath);
     console.log('[IPC] Shell.openPath result:', result);
     
@@ -433,7 +650,6 @@ ipcMain.handle('open-game-folder', async (event, gameInstallPath) => {
     }
     
     // Open in Windows Explorer
-    const { shell } = require('electron');
     const result = await shell.openPath(gameInstallPath);
     console.log('[IPC] Shell.openPath result:', result);
     
@@ -590,6 +806,11 @@ ipcMain.handle('clean-virtual-environment', async (event) => {
   }
 });
 
+// Get game process status
+ipcMain.handle('get-game-status', async (event) => {
+  return { ...gameProcessInfo };
+});
+
 // Open virtual game folder
 ipcMain.handle('open-virtual-game-folder', async (event) => {
   const virtualGamePath = path.join(process.cwd(), 'virtual_game');
@@ -660,7 +881,7 @@ async function readModMetadata(modDir) {
 // Update mod metadata
 ipcMain.handle('update-mod-metadata', async (event, modId, updates) => {
   try {
-    const modDir = path.join(process.cwd(), 'mods', modId);
+    const modDir = path.join(getAppDataPath(), 'mods', modId);
     const metadataPath = path.join(modDir, 'mod_loader_info.json');
     
     let metadata = await readModMetadata(modDir);
@@ -684,7 +905,7 @@ ipcMain.handle('update-mod-metadata', async (event, modId, updates) => {
 
 // Extract the logic into a reusable function
 async function getModsWithMetadata() {
-  const modsDir = path.join(process.cwd(), 'mods');
+      const modsDir = path.join(getAppDataPath(), 'mods');
   
   if (!(await fs.pathExists(modsDir))) {
     return [];
@@ -870,7 +1091,7 @@ function adjustModFilePath(extractPath, fileName) {
   // Handle CET lua files
   if (fileName.endsWith('.lua') || pathParts.includes('init.lua')) {
     return path.join(extractPath, 'bin', 'x64', 'plugins', 'cyber_engine_tweaks', 'mods', fileName);
-  }
+  }   
   
   // Handle CET version.dll
   if (fileName === 'version.dll' || (fileName.endsWith('version.dll') && pathParts.length === 1)) {
@@ -1010,7 +1231,7 @@ async function buildMergedRuntime(enabledMods, gameInstallPath) {
     const modId = enabledMods[i];
     console.log(`[VIRTUAL] Processing mod ${i + 1}/${enabledMods.length}: ${modId}`);
     
-    const modPath = path.join(process.cwd(), 'mods', modId);
+    const modPath = path.join(getAppDataPath(), 'mods', modId);
     if (await fs.pathExists(modPath)) {
       const modStats = await overlayModFiles(modPath, virtualGamePath, modId);
       stats.modsProcessed++;

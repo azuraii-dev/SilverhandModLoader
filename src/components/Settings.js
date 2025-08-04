@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FolderOpen, Save, RefreshCw, HardDrive, Settings as SettingsIcon } from 'lucide-react';
-import TroubleshootingPanel from './TroubleshootingPanel';
-import GameFileManager from './GameFileManager';
+
 
 const Settings = ({ config, onUpdateGamePath }) => {
   const [gameInstallPath, setGameInstallPath] = useState(config.gameInstallPath || '');
@@ -145,7 +144,7 @@ const Settings = ({ config, onUpdateGamePath }) => {
             <p className="text-sm text-amber-200">
               <strong>Note:</strong> This mod loader uses a virtual filesystem overlay. 
               Your original game files are never modified. Mods are applied at runtime 
-              by creating a merged view in the <code>merged_runtime/</code> directory.
+              by creating a merged view in the <code>merged_game/</code> directory.
             </p>
           </div>
         </div>
@@ -186,12 +185,27 @@ const Settings = ({ config, onUpdateGamePath }) => {
 
           <div className="flex items-center justify-between">
             <div>
-              <div className="font-semibold text-gray-300">Clear Merged Runtime</div>
+              <div className="font-semibold text-gray-300">Clear Virtual Game Environment</div>
               <div className="text-sm text-gray-400">
-                Clear the merged runtime directory to free up space
+                Clear the virtual game environment to free up space
               </div>
             </div>
-            <button className="cyber-button flex items-center space-x-2">
+            <button 
+              onClick={async () => {
+                const confirmed = window.confirm(
+                  'This will clear the virtual game environment. Your original game files and mods are safe. Continue?'
+                );
+                if (confirmed) {
+                  try {
+                    await window.electronAPI.cleanVirtualEnvironment();
+                    alert('Virtual environment cleared successfully!');
+                  } catch (error) {
+                    alert(`Error clearing virtual environment: ${error.message}`);
+                  }
+                }
+              }}
+              className="cyber-button flex items-center space-x-2"
+            >
               <RefreshCw size={16} />
               <span>Clear</span>
             </button>
@@ -237,12 +251,6 @@ const Settings = ({ config, onUpdateGamePath }) => {
           </div>
         </div>
       </div>
-
-      {/* Game File Management */}
-      <GameFileManager config={config} />
-
-      {/* Troubleshooting Panel */}
-      <TroubleshootingPanel config={config} />
     </div>
   );
 };
