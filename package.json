@@ -1,6 +1,6 @@
 {
   "name": "silverhand-mod-loader",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "A mod loader for Cyberpunk 2077 with virtual filesystem overlay",
   "main": "public/electron.js",
   "homepage": "./",

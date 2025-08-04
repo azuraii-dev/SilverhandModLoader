@@ -13,15 +13,7 @@ function App() {
   const [config, setConfig] = useState({
     gameInstallPath: '',
     enabledMods: [],
-    modLoadOrder: [],
-    profiles: {
-      default: {
-        name: 'Default Profile',
-        enabledMods: [],
-        loadOrder: []
-      }
-    },
-    currentProfile: 'default'
+    modLoadOrder: []
   });
   const [mods, setMods] = useState([]);
   const [conflicts, setConflicts] = useState([]);

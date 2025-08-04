@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { FixedSizeList as List } from 'react-window';
 import {
   DndContext,
@@ -14,7 +14,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Eye, Power, GripVertical, Edit3, Tag, FolderOpen, Trash2, Search, Filter, ToggleLeft, ToggleRight, ArrowUpDown } from 'lucide-react';
+import { Eye, Power, GripVertical, Edit3, Trash2, Search, Filter, ToggleLeft, ToggleRight, ArrowUpDown } from 'lucide-react';
 
 const ITEM_HEIGHT = 130; // Height of each mod card including spacing
 
@@ -66,16 +66,18 @@ const ModCard = React.memo(({ mod, index, isEnabled, onToggle, onEdit, onViewFil
     >
       <div className="flex items-start justify-between h-full">
         <div className="flex items-start space-x-3 flex-1 min-w-0 h-full">
-          {!isDragDisabled && (
-            <div className="text-gray-400 hover:text-gray-200 cursor-grab mt-1 flex flex-col items-center">
-              <GripVertical size={16} />
-              {loadOrderPosition && (
-                <span className="text-xs text-cyber-blue font-bold bg-cyber-blue bg-opacity-20 px-1 rounded">
-                  {loadOrderPosition}
-                </span>
-              )}
-            </div>
-          )}
+          <div className="flex flex-col items-center mt-1 space-y-1">
+            {!isDragDisabled && (
+              <div className="text-gray-400 hover:text-gray-200 cursor-grab">
+                <GripVertical size={16} />
+              </div>
+            )}
+            {loadOrderPosition && (
+              <span className="text-xs text-cyber-blue font-bold bg-cyber-blue bg-opacity-20 px-1 rounded">
+                {loadOrderPosition}
+              </span>
+            )}
+          </div>
           
           <div className="flex-1 min-w-0 h-full flex flex-col">
             {/* Title - Fixed height */}
@@ -415,9 +417,9 @@ const VirtualizedModList = ({
 
   const totalItems = filteredAndSortedMods.length;
   // Use a responsive height calculation
-  const [containerHeight, setContainerHeight] = React.useState(600);
-  
-  React.useEffect(() => {
+    const [containerHeight, setContainerHeight] = useState(600);
+
+  useEffect(() => {
     const updateHeight = () => {
       // Calculate available height: viewport height minus header, search, and padding
       const availableHeight = window.innerHeight - 280; // Reserve space for header, search, padding

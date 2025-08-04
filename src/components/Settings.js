@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FolderOpen, Save, RefreshCw, HardDrive, Settings as SettingsIcon } from 'lucide-react';
+import { FolderOpen, RefreshCw, HardDrive, Settings as SettingsIcon } from 'lucide-react';
 
 
 const Settings = ({ config, onUpdateGamePath }) => {
